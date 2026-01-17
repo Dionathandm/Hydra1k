@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Hydra 1K</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.5/dist/leaflet.css"/>
+<style>
+  body { margin:0; font-family: Arial, sans-serif; background:#000; color:#fff; overflow-x:hidden; }
+  
+  #introScreen { position: fixed; inset:0; background:#000; display:flex; justify-content:center; align-items:center; z-index:10000; }
+  #introScreen img { max-width:80%; border-radius:12px; }
+
+  header { position: fixed; top:0; width:100%; height:56px; display:flex; align-items:center; padding:0 16px; background:rgba(0,0,0,0.95); z-index:1000; }
+  header img { height:36px; margin-right:12px; }
+  header span { font-size:20px; font-weight:bold; }
+
+  main { padding:80px 16px 16px; }
+  #map { width:100%; height:400px; border-radius:8px; margin-bottom:16px; }
+
+  .info { margin:16px 0; font-size:16px; }
+  .btn { background:red; color:#fff; padding:12px 16px; border:none; border-radius:8px; cursor:pointer; font-size:16px; margin-top:8px; width:100%; text-align:center; }
+
+  #cadastro { display:none; background:#111; padding:16px; border-radius:8px; box-shadow:0 0 8px rgba(0,0,0,0.5); }
+  #cadastro input { width:100%; padding:8px; margin:8px 0; border-radius:4px; border:1px solid #333; background:#222; color:#fff; }
+
+  #btnDownload { position: fixed; bottom:20px; left:50%; transform:translateX(-50%); background:red; color:#fff; padding:12px 22px; border-radius:8px; display:block; z-index:9999; font-size:16px; }
+  #suporte { position:fixed; bottom:90px; right:20px; background:#25D366; width:56px; height:56px; border-radius:50%; display:flex; justify-content:center; align-items:center; color:#fff; font-size:28px; cursor:pointer; z-index:1000; }
+</style>
+</head>
+<body>
+
+<div id="introScreen">
+  <img src="https://i.ibb.co/Y4bX3XDr/lv-0-20260117034219.png" alt="Hydra 1K">
+</div>
+
+<header>
+  <img src="https://i.ibb.co/Y4bX3XDr/lv-0-20260117034219.png" alt="Hydra 1K Logo">
+  <span>Hydra 1K</span>
+</header>
+
+<main>
+  <div id="cadastro">
+    <h3>Cadastro</h3>
+    <input type="text" id="nome" placeholder="Seu nome">
+    <input type="email" id="email" placeholder="Seu email">
+    <button class="btn" onclick="iniciar()">Começar a caminhar</button>
+  </div>
+
+  <div id="app" style="display:none;">
+    <div id="map"></div>
+    <div class="info">Distância percorrida: <span id="distancia">0</span> km</div>
+    <div class="info">Saldo acumulado: R$ <span id="saldo">0</span></div>
+    <div class="info">Meta de resgate: 500 km = R$500</div>
+    <button class="btn" onclick="resgatar()">Resgatar Pix</button>
+  </div>
+</main>
+
+<div id="btnDownload">📥 Baixar Hydra 1K</div>
+<div id="suporte">💬</div>
+
+<script src="https://unpkg.com/leaflet@1.9.5/dist/leaflet.js"></script>
+<script>
+const introScreen = document.getElementById("introScreen");
+setTimeout(() => introScreen.style.display = "none", 3000);
+
+let distancia = 0;
+let saldo = 0;
+let posicoes = [];
+const META = 500;
+let map, pathLine, lastMarker, kmNotificado = 0;
+
+function iniciar() {
+  const nome = document.getElementById("nome").value;
+  const email = document.getElementById("email").value;
+  if(!nome || !email) { alert("Preencha todos os campos!"); return; }
+
+  document.getElementById("cadastro").style.display = "none";
+  document.getElementById("app").style.display = "block";
+
+  // solicita permissão para notificações
+  if("Notification" in window && Notification.permission !== "granted") {
+    Notification.requestPermission();
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(atualizarPosicao, erroPosicao, { enableHighAccuracy:true, maximumAge:1000, timeout:5000 });
+  } else { alert("GPS não suportado"); }
+}
+
+function atualizarPosicao(pos) {
+  const lat = pos.coords.latitude;
+  const lon = pos.coords.longitude;
+  const novaPos = [lat, lon];
+  posicoes.push(novaPos);
+
+  // inicializa mapa
+  if(!map) {
+    map = L.map('map').setView(novaPos, 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '' }).addTo(map);
+    pathLine = L.polyline(posicoes, { color: 'red', weight:4 }).addTo(map);
+    lastMarker = L.marker(novaPos).addTo(map);
+  } else {
+    pathLine.setLatLngs(posicoes);
+    map.setView(novaPos, map.getZoom());
+    lastMarker.setLatLng(novaPos);
+  }
+
+  // calcula distância total
+  if(posicoes.length > 1) {
+    const d = distanciaEntre(posicoes[posicoes.length-2], posicoes[posicoes.length-1]);
+    distancia += d;
+  }
+
+  document.getElementById("distancia").innerText = distancia.toFixed(2);
+  document.getElementById("saldo").innerText = Math.floor(distancia);
+
+  // notificação a cada km completo
+  if(Math.floor(distancia) > kmNotificado) {
+    kmNotificado = Math.floor(distancia);
+    enviarNotificacao(`Você percorreu ${kmNotificado} km! Saldo: R$${kmNotificado}`);
+  }
+
+  // notificação da meta
+  if(distancia >= META && kmNotificado < META) {
+    enviarNotificacao(`Parabéns! Você atingiu a meta de 500 km e pode resgatar R$500 via Pix!`);
+    kmNotificado = META;
+  }
+}
+
+function distanciaEntre(a,b) {
+  const R = 6371;
+  const dLat = (b[0]-a[0]) * Math.PI/180;
+  const dLon = (b[1]-a[1]) * Math.PI/180;
+  const lat1 = a[0]*Math.PI/180;
+  const lat2 = b[0]*Math.PI/180;
+  const h = Math.sin(dLat/2)**2 + Math.sin(dLon/2)**2 * Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  return R * c;
+}
+
+function enviarNotificacao(msg) {
+  if("Notification" in window && Notification.permission === "granted") {
+    new Notification("Hydra 1K", { body: msg, icon:"https://i.ibb.co/Y4bX3XDr/lv-0-20260117034219.png" });
+  } else {
+    alert(msg);
+  }
+}
+
+function erroPosicao(e) { console.error(e); }
+
+function resgatar() {
+  if(distancia >= META) {
+    alert("Parabéns! Você pode resgatar R$500 via Pix!");
+    // Integração Pix futura
+  } else {
+    alert(`Você precisa caminhar mais ${(META - distancia).toFixed(1)} km para resgatar`);
+  }
+}
+
+document.getElementById("suporte").onclick = () => {
+  alert("Suporte via WhatsApp será adicionado em breve!");
+};
+
+document.getElementById("btnDownload").onclick = () => {
+  alert("Download do app será disponibilizado em breve!");
+};
+</script>
+</body>
+</html>
