@@ -1,0 +1,20 @@
+{
+  "name": "Hydra 1K",
+  "short_name": "Hydra1K",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#ff0000",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/Y4bX3XDr/lv-0-20260117034219.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://i.ibb.co/Y4bX3XDr/lv-0-20260117034219.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
